@@ -84,15 +84,18 @@ def page(ctx: dict) -> str:
     o = c.get("options")
     a("<div class='card'><p class='lab'>Options (DataFirst)</p>")
     if o:
-        gc = "#0F6E56" if o.get("gamma_env") == "positive" else "#A32D2D"
-        a(f"<div class='row'><span>Gamma environment</span><b style='color:{gc}'>{e(o.get('gamma_env', '—'))}</b></div>")
+        env = o.get("gamma_env")
+        gc = "#0F6E56" if env == "positive" else "#A32D2D"
+        txt = "Positive — levels hold more" if env == "positive" else "Negative — moves run, levels break more" if env == "negative" else "—"
+        a(f"<div class='row'><span>Gamma environment</span><b style='color:{gc}'>{e(txt)}</b></div>")
         a(f"<div class='row'><span>Gamma flip (NQ)</span><span class='m'>{num(o.get('flip_nq'), 2)}</span></div>")
-        d = o.get("net_dex")
-        a(f"<div class='row'><span>Net DEX</span><span>{'▲ dealers long' if (d or 0) > 0 else '▼ dealers short' if (d or 0) < 0 else '—'}</span></div>")
-        for w in o.get("walls_nq", []):
-            a(f"<div class='row'><span>{e(w['label'])}</span><span class='m'>{num(w['price'], 2)}</span></div>")
+        for lab, p in o["rows"]:
+            a(f"<div class='row'><span>{e(lab)}</span><span class='m'>{num(p, 2)}</span></div>")
+        if o.get("dex_note"):
+            a(f"<div class='row'><span style='color:#BA7517'>{e(o['dex_note'])}</span></div>")
+        a(f"<p class='sub'>From {e(o['underlying'])}, converted to NQ. Backtest has {o['hist_days']} days of GEX history.</p>")
     else:
-        a("<p class='sub'>Not connected yet. GEX, gamma flip, DEX and 0DTE/7DTE walls show here once the DataFirst endpoints are wired.</p>")
+        a("<p class='sub'>No options data this run.</p>")
     a("</div>")
 
     # vwaps

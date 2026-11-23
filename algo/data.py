@@ -119,7 +119,7 @@ def futures():
 
 # ---------------------------------------------------------------- Alpaca
 def _alpaca_headers():
-    k, s = os.getenv("ALPACA_KEY_ID"), os.getenv("ALPACA_SECRET")
+    k, s = (os.getenv("ALPACA_KEY_ID") or "").strip(), (os.getenv("ALPACA_SECRET") or "").strip()
     if not k or not s:
         return None
     return {"APCA-API-KEY-ID": k, "APCA-API-SECRET-KEY": s}
@@ -174,7 +174,7 @@ def alpaca_news(hours=24, symbols=None, max_items=300) -> list:
 
 # ---------------------------------------------------------------- FRED
 def fred_series(series_id: str, days=400) -> pd.Series:
-    key = os.getenv("FRED_API_KEY")
+    key = (os.getenv("FRED_API_KEY") or "").strip()
     if not key:
         return pd.Series(dtype=float)
     start = (dt.date.today() - dt.timedelta(days=days)).isoformat()
@@ -193,7 +193,7 @@ def fred_series(series_id: str, days=400) -> pd.Series:
 
 
 def fred_release_dates(release_id: int, days_back=120, days_fwd=45) -> list:
-    key = os.getenv("FRED_API_KEY")
+    key = (os.getenv("FRED_API_KEY") or "").strip()
     if not key:
         return []
     start = (dt.date.today() - dt.timedelta(days=days_back)).isoformat()

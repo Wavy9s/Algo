@@ -93,7 +93,7 @@ def simulate(level, side, bars: pd.DataFrame, sigma, max_touches=C.MAX_TOUCHES):
     return recs
 
 
-def backtest(m5, d1, day_prof, vxn_hist=None, risk_days=frozenset()):
+def backtest(m5, d1, day_prof, vxn_hist=None, risk_days=frozenset(), opt_hist=None):
     """Rebuild levels each past day using only prior data, then score every touch."""
     rows = []
     days = sorted(m5.tdate.unique())
@@ -108,15 +108,21 @@ def backtest(m5, d1, day_prof, vxn_hist=None, risk_days=frozenset()):
             vx = float(prior.iloc[-1]) if len(prior) else None
         dd = d1[d1.index.date < D] if d1 is not None else None
         sigma, _ = sigma_points(prev_close, dd, vx)
-        lv = L.collect(m5, d1, D, day_prof)
+        lv = L.collect(m5, d1, D, day_prof, (opt_hist or {}).get(D))
         if not lv:
             continue
         tol = max(C.STACK_TOL_MIN, C.STACK_TOL_SIGMA * sigma)
         stacks = stack_counts(lv, tol)
         o = bars.open.iloc[0]
+        hm = bars.index.hour * 60 + bars.index.minute
+        rth_bars = bars[(hm >= 570) & (hm < 1020)]
         for x, stk in zip(lv, stacks):
-            side = "R" if x["price"] > o else "S"
-            for r in simulate(x["price"], side, bars, sigma):
+            # options levels are known from 9:30 ET, so only test them from then on
+            b = rth_bars if x["cat"] == "options" else bars
+            if b.empty:
+                continue
+            side = "R" if x["price"] > b.open.iloc[0] else "S"
+            for r in simulate(x["price"], side, b, sigma):
                 if r["outcome"] == "open":
                     continue
                 rows.append({"date": D, "type": x["type"], "cat": x["cat"], "side": side,

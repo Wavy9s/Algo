@@ -36,6 +36,7 @@ TYPES = {
     "OTE_D": ("Daily OTE 0.705", "ote", "D"), "OTE_W": ("Weekly OTE 0.705", "ote", "W"),
     "GEX_CALL": ("Call wall", "options", "O"), "GEX_PUT": ("Put wall", "options", "O"),
     "GAMMA_FLIP": ("Gamma flip", "options", "O"), "DEX_WALL": ("DEX wall", "options", "O"),
+    "MAX_PAIN": ("Max pain", "options", "O"), "VOL_TRIGGER": ("Vol trigger", "options", "O"),
 }
 
 
