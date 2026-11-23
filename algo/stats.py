@@ -131,7 +131,7 @@ def backtest(m5, d1, day_prof, vxn_hist=None, risk_days=frozenset(), opt_hist=No
         rth_bars = bars[(hm >= 570) & (hm < 1020)]
         for x, stk in zip(lv, stacks):
             # options levels are known from 9:30 ET, so only test them from then on
-            b = rth_bars if x["cat"] == "options" else bars
+            b = rth_bars if x["cat"] in ("options", "on") else bars
             if b.empty:
                 continue
             side = "R" if x["price"] > b.open.iloc[0] else "S"

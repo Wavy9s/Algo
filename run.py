@@ -99,6 +99,31 @@ def run_instrument(name, fut, now, shared, fred, pw):
         rec = logbook.lock(today, pick.choose(scored, sigma), sigma, price, now, name)
     picks = logbook.live_status(rec, m5[m5.tdate == today])
 
+    # re-pick: swap out picks that broke or ran out of reach, keep live/held ones
+    earlier = list(rec.get("earlier", []))
+    tol = max(C.STACK_TOL_MIN, C.STACK_TOL_SIGMA * sigma)
+    stamp = now.strftime("%I:%M %p ET").lstrip("0")
+    active, removed = [], False
+    n_re = sum(1 for p in picks + earlier if p.get("repick"))
+    can_fill = n_re < 12
+    for p in picks:
+        reach = stats.touch_odds(p["price"] - price, sigma_rem)
+        young = p.get("since") and (now - dt.datetime.fromisoformat(p["since"])).total_seconds() < 3600
+        far = p["status"] == "live" and reach < 0.10 and not young and can_fill
+        if p["status"] == "broke" or far:
+            earlier.append({**p, "removed": stamp, "why": "broke" if p["status"] == "broke" else "out of reach"})
+            removed = True
+        else:
+            active.append(p)
+    if removed:
+        new = pick.fill(active, scored, sigma, price, [p["price"] for p in active + earlier], tol) if can_fill else []
+        for p in new:
+            p.update({"repick": True, "since": now.isoformat(), "new_at": stamp, "status": "live"})
+        active += new
+        rec["picks"], rec["earlier"] = active, earlier
+        logbook.save_rec(today, rec, name)
+    picks = sorted(active, key=lambda x: -x["price"])
+
     opt_view = None
     if opt:
         r = price / opt["spot"]
@@ -121,6 +146,7 @@ def run_instrument(name, fut, now, shared, fred, pw):
     return {
         "name": name, "price": price, "sigma": sigma, "sigma_src": sigma_src,
         "locked_at": rec["locked_at"][11:16] + " ET", "picks": picks, "scored": scored,
+        "earlier": rec.get("earlier", []),
         "learned": learned, "options": opt_view, "vwaps": vwap.all_vwaps(m5, today),
         "scorecard": logbook.scorecard(inst=name), "level_string": pick.level_string(picks),
         "warnings": warns, "vol": vol_view,

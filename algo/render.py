@@ -71,17 +71,28 @@ def _top(c, s, a):
       f"<p class='sub'>week ±{num(s['sigma'] * 5 ** .5, dp)} · {e(s['sigma_src'])}</p>{extra}</div>")
     a("</div>")
 
-    a(f"<div class='card'><p class='lab'>{s['name']} picked levels — locked at first run of the day</p><table>"
+    a(f"<div class='card'><p class='lab'>{s['name']} picked levels — locked at first run · broken or out-of-reach picks get replaced</p><table>"
       "<tr><th>Price</th><th>Level</th><th>Touch</th><th>Hold</th><th>n</th><th>Bounce</th><th>EV</th><th>Grade</th><th>Status</th></tr>")
     for p in s["picks"]:
-        notes = f"<div class='sub'>{e(', '.join(p['notes']))}</div>" if p.get("notes") else ""
+        nl = ([f"new {p['new_at']}"] if p.get("new_at") else []) + list(p.get("notes") or [])
+        notes = f"<div class='sub'>{e(', '.join(nl))}</div>" if nl else ""
         a(f"<tr><td class='m {p['side']}'>{num(p['price'], 2)}</td><td>{e(p['label'])}{notes}</td>"
           f"<td>{pct(p['touch'])}</td><td>{pct(p['hold'])}</td><td>{p['n']}</td><td>{num(p['bounce'])}</td>"
           f"<td>{num(p['ev'], 1)}</td><td><span class='g g{e(p['grade'])}'>{e(p['grade'])}</span></td>"
           f"<td><span class='st st-{p.get('status', 'live')}'>{e(p.get('status', 'live'))}</span></td></tr>")
     if not s["picks"]:
         a("<tr><td colspan='9' class='muted'>No levels passed the filters today.</td></tr>")
-    a("</table></div>")
+    a("</table>")
+    if s.get("earlier"):
+        a("<details style='margin-top:8px'><summary>Earlier today (replaced)</summary><table>"
+          "<tr><th>Price</th><th>Level</th><th>Grade</th><th>Why</th><th>When</th></tr>")
+        for p in s["earlier"]:
+            a(f"<tr><td class='m muted'>{num(p['price'], 2)}</td><td class='muted'>{e(p['label'])}</td>"
+              f"<td><span class='g g{e(p['grade'])}'>{e(p['grade'])}</span></td>"
+              f"<td><span class='st st-{'broke' if p['why'] == 'broke' else 'live'}'>{e(p['why'])}</span></td>"
+              f"<td class='muted'>{e(p['removed'])}</td></tr>")
+        a("</table></details>")
+    a("</div>")
 
     a("<div class='grid2'>")
     o = s.get("options")
@@ -139,7 +150,10 @@ def _bottom(s, a):
     a(f"<div class='card'><p class='lab'>{s['name']} scorecard — how past picks did</p>")
     if sc:
         g = " · ".join(f"{k} held {pct(v[0])} (n={v[1]})" for k, v in sorted(sc["by_grade"].items()))
-        a(f"<div class='row'><span>Last {sc['days']} days by grade</span><span>{e(g) or '—'}</span></div>")
+        a(f"<div class='row'><span>Morning picks, last {sc['days']} days</span><span>{e(g) or '—'}</span></div>")
+        if sc.get("repick"):
+            a(f"<div class='row'><span>Re-picks (after a break / big move)</span><span>held {pct(sc['repick'][0])} "
+              f"(n={sc['repick'][1]})</span></div>")
         a(f"<div class='row'><span>Touch odds: predicted vs real</span><span>{pct(sc['touch_pred'])} vs {pct(sc['touch_real'])}</span></div>")
         a(f"<div class='row'><span>Hold %: predicted vs real</span><span>{pct(sc['hold_pred'])} vs {pct(sc['hold_real'])}</span></div>")
         a(f"<div class='row'><span>Last day ({e(sc['last_date'])})</span><span>{sc['last_held']} of {sc['last_n']} touched picks held "

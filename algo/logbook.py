@@ -50,10 +50,21 @@ def _first_outcome(p, bars, sigma):
     return True, recs[0]["outcome"]
 
 
+def save_rec(d, rec, inst="NQ"):
+    secure.save(_path(d, inst), rec)
+
+
+def _since(rec, p, bars):
+    """Bars after the pick went live (its own time for re-picks, lock time otherwise)."""
+    if bars is None or bars.empty:
+        return bars
+    return bars[bars.index >= pd.Timestamp(p.get("since") or rec["locked_at"])]
+
+
 def live_status(rec, m5_today):
-    bars = _after_lock(rec, m5_today)
     out = []
     for p in rec["picks"]:
+        bars = _since(rec, p, m5_today)
         if bars is None or bars.empty:
             out.append({**p, "status": "live"})
             continue
@@ -85,10 +96,10 @@ def finalize(m5, today, inst="NQ"):
         rec = secure.load(os.path.join(PICKS, fn))
         if bars.empty or not rec:
             continue
-        bars = _after_lock(rec, bars)
-        for p in rec["picks"]:
-            touched, oc = _first_outcome(p, bars, rec["sigma"])
-            new.append({"date": ds, "price": p["price"], "side": p["side"], "grade": p["grade"],
+        for p in rec["picks"] + rec.get("earlier", []):
+            touched, oc = _first_outcome(p, _since(rec, p, bars), rec["sigma"])
+            new.append({"date": ds, "kind": "re-pick" if p.get("repick") else "morning",
+                        "price": p["price"], "side": p["side"], "grade": p["grade"],
                         "label": p["label"], "touch_pred": p["touch"], "hold_pred": p["hold"],
                         "touched": bool(touched), "outcome": oc})
     if new:
@@ -102,6 +113,12 @@ def scorecard(days=30, inst="NQ"):
     df = pd.DataFrame(rows)
     keep = sorted(df.date.unique())[-days:]
     df = df[df.date.isin(keep)]
+    if "kind" not in df:
+        df["kind"] = "morning"
+    df["kind"] = df["kind"].fillna("morning")
+    rp = df[(df.kind == "re-pick") & df.outcome.isin(["held", "broke"])]
+    repick = (float((rp.outcome == "held").mean()), int(len(rp))) if len(rp) else None
+    df = df[df.kind == "morning"]
     res = df[df.outcome.isin(["held", "broke"])]
     by_grade = {g: (float((x.outcome == "held").mean()), int(len(x))) for g, x in res.groupby("grade")}
     last = df[df.date == keep[-1]]
@@ -112,7 +129,7 @@ def scorecard(days=30, inst="NQ"):
         "hold_pred": float(res.hold_pred.mean()) if len(res) else None,
         "hold_real": float((res.outcome == "held").mean()) if len(res) else None,
         "last_date": keep[-1], "last_held": int((lr.outcome == "held").sum()), "last_n": int(len(lr)),
-        "last_picks": int(len(last)),
+        "last_picks": int(len(last)), "repick": repick,
     }
 
 

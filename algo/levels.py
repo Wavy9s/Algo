@@ -22,6 +22,7 @@ TYPES = {
     "PW_C": ("Prior-week close", "range", "W"),
     "PM_H": ("Prior-month high", "range", "M"), "PM_L": ("Prior-month low", "range", "M"),
     "PM_C": ("Prior-month close", "range", "M"),
+    "ONH": ("Overnight high", "on", "D"), "ONL": ("Overnight low", "on", "D"),
     "POOR_H": ("Poor high", "amt", "D"), "POOR_L": ("Poor low", "amt", "D"),
     "SINGLE": ("Single prints", "amt", "D"),
     "PD_VWAP": ("Prior-day VWAP", "vwap", "D"), "PD_VWAP_1": ("Prior-day VWAP 1σ", "vwap", "D"),
@@ -160,6 +161,15 @@ def collect(m5: pd.DataFrame, d1: pd.DataFrame, D, day_prof: dict, options=None)
             if t in TYPES and s["sd"] > 0:
                 _add(out, t, s["vwap"] + m * s["sd"], " (+)")
                 _add(out, t, s["vwap"] - m * s["sd"], " (−)")
+
+    # overnight high/low of D itself (Globex open -> 9:30 ET); only usable from the RTH open on
+    tb = m5[m5.tdate == D]
+    if len(tb):
+        hm = tb.index.hour * 60 + tb.index.minute
+        on = tb[(hm < 570) | (hm >= 1080)]
+        if len(on) >= 12:
+            _add(out, "ONH", on.high.max())
+            _add(out, "ONL", on.low.min())
 
     for o in options or []:
         _add(out, o["type"], o["price"], o.get("sfx", ""))

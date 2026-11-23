@@ -92,7 +92,7 @@ def choose(scored, sigma):
     picks = []
     for side in ("R", "S"):
         c = [x for x in scored if x["side"] == side and not x["lvn"] and x["grade"] in ("A+", "A", "B")
-             and x["touch"] >= C.MIN_TOUCH and abs(x["dist"]) >= C.MIN_DIST_SIGMA * sigma]
+             and x["touch"] >= C.MIN_TOUCH and abs(x["dist"]) >= C.MIN_DIST_SIGMA * sigma and x["ev"] > 0]
         rank = {"A+": 2, "A": 1, "B": 0}
         c.sort(key=lambda x: (rank[x["grade"]], x["ev"]), reverse=True)
         picks += c[:C.N_SIDE]
@@ -101,3 +101,20 @@ def choose(scored, sigma):
 
 def level_string(picks):
     return ",".join(f"{p['price']:.2f}:{p['grade']}:{p['side']}" for p in picks)
+
+
+def fill(active, scored, sigma, price, exclude, tol, n_side=C.N_SIDE):
+    """Top up each side (relative to current price) to n_side with the best fresh levels."""
+    rank = {"A+": 2, "A": 1, "B": 0}
+    out = []
+    for side in ("R", "S"):
+        have = sum(1 for p in active if (p["price"] > price) == (side == "R"))
+        need = n_side - have
+        if need <= 0:
+            continue
+        c = [x for x in scored if x["side"] == side and not x["lvn"] and x["grade"] in rank
+             and x["touch"] >= C.MIN_TOUCH and abs(x["dist"]) >= C.MIN_DIST_SIGMA * sigma and x["ev"] > 0
+             and all(abs(x["price"] - e) > tol for e in exclude)]
+        c.sort(key=lambda x: (rank[x["grade"]], x["ev"]), reverse=True)
+        out += [dict(x) for x in c[:need]]
+    return out
