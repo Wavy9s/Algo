@@ -115,11 +115,11 @@ def _regime(*views):
     return None
 
 
-def fetch():
+def fetch(syms=SYMS):
     key = _key()
     if not key:
         return None
-    for sym in SYMS:
+    for sym in syms:
         try:
             near = _get(f"/v1/symbols/{sym}/levels", key, {"expirations": 1})
             week = _get(f"/v1/symbols/{sym}/levels", key, {"expirations": 5})
@@ -162,7 +162,7 @@ def fetch():
 
 
 def to_levels(opt, nq_price):
-    """Underlying strikes -> NQ prices using today's NQ / underlying ratio."""
+    """Underlying strikes -> futures prices using today's futures / underlying ratio."""
     if not opt or not opt.get("spot"):
         return []
     r = nq_price / opt["spot"]
@@ -202,14 +202,14 @@ def _walk(obj, parent_time=None):
             yield from _walk(v, parent_time)
 
 
-def fetch_history(days=30):
+def fetch_history(days=30, syms=SYMS):
     """{date: {"spot": x, "levels": [(type, underlying_price, sfx)]}} using the snapshot nearest 9:30 ET."""
     key = _key()
     if not key:
         return {}
     to = dt.date.today()
     frm = to - dt.timedelta(days=int(days * 1.5))
-    for sym in SYMS:
+    for sym in syms:
         try:
             js = _get(f"/v1/symbols/{sym}/history/levels", key,
                       {"from": frm.isoformat(), "to": to.isoformat(), "interval": 30})

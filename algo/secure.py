@@ -97,14 +97,14 @@ def lock_page(html: str, pw: str) -> str:
 
 
 LOCK_HTML = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow"><title>Swing levels · NQ</title>
-<style>body{margin:0;background:#E6F1FB;color:#042C53;font:15px/1.5 -apple-system,Segoe UI,Inter,Arial,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center}
-.box{background:#fff;border:1px solid #B5D4F4;border-radius:14px;padding:26px 28px;width:min(360px,90vw)}
-h1{font-size:18px;margin:0 0 4px;color:#0C447C}p{margin:0 0 14px;font-size:13px;color:#5d84ad}
-input[type=password]{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #B5D4F4;border-radius:8px;font-size:15px;margin-bottom:10px}
-button{width:100%;background:#378ADD;color:#fff;border:0;border-radius:8px;padding:10px;font-size:15px;cursor:pointer}
-label{font-size:13px;color:#185FA5;display:flex;gap:6px;align-items:center;margin-bottom:12px}.err{color:#A32D2D;font-size:13px;min-height:18px;margin-top:8px}</style></head>
-<body><form class="box" id="f"><h1>Swing levels · NQ</h1><p>Enter your password to open.</p>
+<meta name="robots" content="noindex,nofollow"><title>Swing levels</title>
+<style>body{margin:0;background:#151515;color:#EDEDED;font:15px/1.5 -apple-system,Segoe UI,Inter,Arial,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center}
+.box{background:#1F1F1F;border:1px solid #333;border-radius:14px;padding:26px 28px;width:min(360px,90vw)}
+h1{font-size:18px;margin:0 0 4px;color:#F5F5F5}p{margin:0 0 14px;font-size:13px;color:#A3A3A3}
+input[type=password]{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #333;background:#151515;color:#EDEDED;border-radius:8px;font-size:15px;margin-bottom:10px}
+button{width:100%;background:#E5E5E5;color:#111;border:0;border-radius:8px;padding:10px;font-size:15px;font-weight:600;cursor:pointer}
+label{font-size:13px;color:#A3A3A3;display:flex;gap:6px;align-items:center;margin-bottom:12px}.err{color:#F87171;font-size:13px;min-height:18px;margin-top:8px}</style></head>
+<body><form class="box" id="f"><h1>Swing levels</h1><p>Enter your password to open.</p>
 <input type="password" id="pw" autocomplete="current-password" autofocus>
 <label><input type="checkbox" id="rem" checked> Remember on this device</label>
 <button type="submit" id="go">Open</button><div class="err" id="err"></div></form>

@@ -8,21 +8,31 @@ from . import secure
 from . import stats as S
 
 ROOT = secure.ROOT
-PICKS = os.path.join(ROOT, "picks")
-RESULTS = os.path.join(ROOT, "results.json")
 
 
-def _path(d):
-    return os.path.join(PICKS, f"{d.isoformat()}.json")
+def _sfx(inst):
+    return "" if inst == "NQ" else f"_{inst}"   # NQ keeps the original file names
 
 
-def load_locked(d):
-    return secure.load(_path(d))
+def _picks_dir(inst):
+    return os.path.join(ROOT, "picks" + _sfx(inst))
 
 
-def lock(d, picks, sigma, price, now):
+def _results_path(inst):
+    return os.path.join(ROOT, f"results{_sfx(inst)}.json")
+
+
+def _path(d, inst):
+    return os.path.join(_picks_dir(inst), f"{d.isoformat()}.json")
+
+
+def load_locked(d, inst="NQ"):
+    return secure.load(_path(d, inst))
+
+
+def lock(d, picks, sigma, price, now, inst="NQ"):
     rec = {"date": d.isoformat(), "locked_at": now.isoformat(), "sigma": sigma, "price": price, "picks": picks}
-    secure.save(_path(d), rec)
+    secure.save(_path(d, inst), rec)
     return rec
 
 
@@ -51,14 +61,15 @@ def live_status(rec, m5_today):
     return out
 
 
-def _results():
-    return secure.load(RESULTS) or []
+def _results(inst):
+    return secure.load(_results_path(inst)) or []
 
 
-def finalize(m5, today):
+def finalize(m5, today, inst="NQ"):
+    PICKS = _picks_dir(inst)
     if not os.path.isdir(PICKS):
         return
-    rows = _results()
+    rows = _results(inst)
     done = {r["date"] for r in rows}
     new = []
     for fn in sorted(os.listdir(PICKS)):
@@ -80,11 +91,11 @@ def finalize(m5, today):
                         "label": p["label"], "touch_pred": p["touch"], "hold_pred": p["hold"],
                         "touched": bool(touched), "outcome": oc})
     if new:
-        secure.save(RESULTS, rows + new)
+        secure.save(_results_path(inst), rows + new)
 
 
-def scorecard(days=30):
-    rows = _results()
+def scorecard(days=30, inst="NQ"):
+    rows = _results(inst)
     if not rows:
         return None
     df = pd.DataFrame(rows)
@@ -105,9 +116,9 @@ def scorecard(days=30):
 
 
 # ---------------------------------------------------------------- options cache
-def load_opt_cache():
-    return secure.load(os.path.join(ROOT, "options.json")) or {}
+def load_opt_cache(inst="NQ"):
+    return secure.load(os.path.join(ROOT, f"options{_sfx(inst)}.json")) or {}
 
 
-def save_opt_cache(obj):
-    secure.save(os.path.join(ROOT, "options.json"), obj)
+def save_opt_cache(obj, inst="NQ"):
+    secure.save(os.path.join(ROOT, f"options{_sfx(inst)}.json"), obj)

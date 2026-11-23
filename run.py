@@ -1,64 +1,40 @@
-"""Run the swing-levels algo once: pull data, learn stats, pick levels, write the page."""
+"""Run the swing-levels algo once for NQ and ES: pull data, learn stats, pick levels, write the page."""
 import datetime as dt
-import json
 import os
 import sys
 
 import numpy as np
 
 from algo import config as C
-from algo import data, levels, logbook, options, pick, profile, render, risk, secure, stats
+from algo import data, levels, logbook, options, pick, profile, render, risk, secure, stats, vwap
 from algo.data import NY
 
 OUT = os.path.join(os.path.dirname(__file__), "site")
 
 
-def main():
-    now = dt.datetime.now(NY)
-    warnings = []
-
-    fut = data.futures()
-    m1, m5, d1, es = fut["m1"], fut["m5"], fut["d1"], fut["es_d1"]
-    if m5.empty:
-        print("No NQ data from yfinance — stopping without changes.")
-        sys.exit(0)
+def run_instrument(name, fut, now, shared, fred, pw):
+    """Everything that's specific to one contract. Returns the page section for it."""
+    C.use(name)
+    cfg = C.INSTRUMENTS[name]
+    warns = []
+    m1, m5, d1 = fut["m1"], fut["m5"], fut["d1"]
     for d, g in fut.get("rolls", []):
-        warnings.append(f"Contract roll detected {d:%b %d}: older bars shifted {g:+.0f} pts so profiles don't mix contracts.")
+        warns.append(f"{name} contract roll {d:%b %d}: older bars shifted {g:+.0f} pts so profiles don't mix contracts.")
     today = data.trade_date(m5.index[-1])
     price = float((m1 if not m1.empty else m5).close.iloc[-1])
 
-    # macro / risk inputs
-    fred = {s: data.fred_series(s) for s in ("DGS2", "DGS10", "VIXCLS", "VXVCLS", "VXNCLS")}
-    if not secure.password():
-        warnings.append("PAGE_PASSWORD missing — this page is public.")
-    if not os.getenv("FRED_API_KEY"):
-        warnings.append("FRED_API_KEY missing — macro score, VXN and event dates are off.")
-    if not os.getenv("ALPACA_KEY_ID"):
-        warnings.append("Alpaca keys missing — headlines and ETF inputs are off.")
-    etf = data.alpaca_daily(C.ETFS)
-    upcoming, risk_days, fomc_stale = risk.events(today)
-    if fomc_stale:
-        warnings.append("FOMC dates in config.py are out of date — add next year's dates.")
-    news = data.alpaca_news(hours=24) + data.alpaca_news(hours=24, symbols=C.NQ_HEAVY + ["QQQ", "SPY"])
-    tagged = risk.tag_headlines(news)
-    risk_level, risk_day = risk.day_risk(today, upcoming, tagged)
-    m_total, m_bias, m_parts = risk.macro_score(fred, etf, d1, es)
-
-    # options (DataFirst) — only if the page can be password-locked
-    pw = secure.password()
-    opt = options.fetch()
-    if opt and not pw:
-        warnings.append("DataFirst is connected but PAGE_PASSWORD is missing — options are hidden so they don't go public.")
-        opt = None
-    elif os.getenv("DATAFIRST_API_KEY") and not opt:
-        warnings.append("DataFirst didn't return levels this run — check the Run algo log for [datafirst] lines.")
+    # options (DataFirst) — only if the page is password-locked
+    opt = options.fetch(cfg["opt"]) if pw else None
+    if os.getenv("DATAFIRST_API_KEY") and not opt:
+        warns.append(f"DataFirst didn't return {name} options this run — check the Run algo log for [datafirst] lines."
+                     if pw else "DataFirst is connected but PAGE_PASSWORD is missing — options are hidden.")
     opt_levels = options.to_levels(opt, price) if opt else []
-    cache = logbook.load_opt_cache() if pw else {}
+    cache = logbook.load_opt_cache(name) if pw else {}
     if pw and options._key() and cache.get("hist_date") != today.isoformat():
-        h = options.fetch_history(30)
+        h = options.fetch_history(30, cfg["opt"])
         if h:
             cache["hist"] = h
-        cache["hist_date"] = today.isoformat()
+            cache["hist_date"] = today.isoformat()
     opt_hist = options.history_to_levels(cache.get("hist", {}), m5) if cache.get("hist") else {}
     dex_note = None
     if opt and opt.get("net_dex") is not None:
@@ -70,12 +46,13 @@ def main():
         else:
             cache["dex"] = {"date": today.isoformat(), "v": opt["net_dex"], "time": now.strftime("%I:%M %p ET")}
     if pw:
-        logbook.save_opt_cache(cache)
+        logbook.save_opt_cache(cache, name)
 
     # volatility
-    vxn = fred["VXNCLS"]
-    vx = float(vxn.iloc[-1]) if len(vxn) else None
-    sigma, sigma_src = stats.sigma_points(price, d1[d1.index.date < today], vx)
+    ivs = fred.get(cfg["vol"])
+    iv = float(ivs.iloc[-1]) if ivs is not None and len(ivs) else None
+    sigma, sigma_src = stats.sigma_points(price, d1[d1.index.date < today], iv)
+    sigma_src = sigma_src.replace("VXN", "VIX" if cfg["vol"] == "VIXCLS" else "VXN")
     if opt and opt.get("gamma_env") == "negative":
         sigma *= C.GAMMA_NEG_EM
         sigma_src += " ×neg-gamma"
@@ -83,26 +60,25 @@ def main():
     frac = max(0.15, min(1.0, (close_et - now).total_seconds() / (23 * 3600))) if now < close_et else 1.0
     sigma_rem = sigma * np.sqrt(frac)
 
-    # learn from history (daily profiles use 1m where available for accuracy)
+    # learn from history (daily profiles use 1m where available)
     day_prof = profile.by_day(m5)
-    for d, g in m1.groupby("tdate") if not m1.empty else []:
-        if d < today and len(g) > 300:
-            day_prof[d] = profile.build(g)
-    bt = stats.backtest(m5, d1, day_prof, vxn if len(vxn) else None, risk_days, opt_hist)
+    if not m1.empty:
+        for d, g in m1.groupby("tdate"):
+            if d < today and len(g) > 300:
+                day_prof[d] = profile.build(g)
+    bt = stats.backtest(m5, d1, day_prof, ivs if ivs is not None and len(ivs) else None,
+                        shared["risk_days"], opt_hist)
     learned = stats.learn(bt)
 
-    # today's levels
     lv = levels.collect(m5, d1, today, day_prof, opt_levels)
-    ctx = {"risk_day": risk_day, "macro_bias": m_bias,
-           "gamma_env": (opt or {}).get("gamma_env"),
-           "dex_sign": 0}  # DataFirst DEX has no dealer sign, so it isn't used for direction
+    ctx = {"risk_day": shared["risk_day"], "macro_bias": shared["macro_bias"],
+           "gamma_env": (opt or {}).get("gamma_env"), "dex_sign": 0}
     scored = pick.score(lv, price, sigma, sigma_rem, learned, ctx)
 
-    # lock picks at the first run of the day, then only update status
-    logbook.finalize(m5, today)
-    rec = logbook.load_locked(today)
+    logbook.finalize(m5, today, name)
+    rec = logbook.load_locked(today, name)
     if rec is None:
-        rec = logbook.lock(today, pick.choose(scored, sigma), sigma, price, now)
+        rec = logbook.lock(today, pick.choose(scored, sigma), sigma, price, now, name)
     picks = logbook.live_status(rec, m5[m5.tdate == today])
 
     opt_view = None
@@ -119,18 +95,65 @@ def main():
         for i, k in enumerate(opt.get("dex_walls", [])):
             rows.append((f"DEX wall {i + 1}", k * r))
         opt_view = {"underlying": opt["underlying"], "gamma_env": opt.get("gamma_env"),
-                    "flip_nq": (opt.get("gamma_flip") or 0) * r or None, "rows": rows,
+                    "flip": (opt.get("gamma_flip") or 0) * r or None, "rows": rows,
                     "dex_note": dex_note, "hist_days": len(opt_hist)}
 
-    from algo import vwap
+    print(f"OK {name} {today} picks={len(picks)} touches={learned['n']} options={'on' if opt else 'off'} "
+          f"options_history_days={len(opt_hist)}")
+    return {
+        "name": name, "price": price, "sigma": sigma, "sigma_src": sigma_src,
+        "locked_at": rec["locked_at"][11:16] + " ET", "picks": picks, "scored": scored,
+        "learned": learned, "options": opt_view, "vwaps": vwap.all_vwaps(m5, today),
+        "scorecard": logbook.scorecard(inst=name), "level_string": pick.level_string(picks),
+        "warnings": warns,
+    }
+
+
+def main():
+    now = dt.datetime.now(NY)
+    warnings = []
+    pw = secure.password()
+    if not pw:
+        warnings.append("PAGE_PASSWORD missing — this page is public and options are off.")
+    if not os.getenv("FRED_API_KEY"):
+        warnings.append("FRED_API_KEY missing — macro score, VIX/VXN and event dates are off.")
+    if not os.getenv("ALPACA_KEY_ID"):
+        warnings.append("Alpaca keys missing — headlines and ETF inputs are off.")
+
+    futs = {n: data.futures(c["yf"]) for n, c in C.INSTRUMENTS.items()}
+    if all(f["m5"].empty for f in futs.values()):
+        print("No futures data from yfinance — stopping without changes.")
+        sys.exit(0)
+    today = data.trade_date(next(f["m5"] for f in futs.values() if not f["m5"].empty).index[-1])
+
+    # shared: macro, events, headlines
+    fred = {s: data.fred_series(s) for s in ("DGS2", "DGS10", "VIXCLS", "VXVCLS", "VXNCLS")}
+    etf = data.alpaca_daily(C.ETFS)
+    upcoming, risk_days, fomc_stale = risk.events(today)
+    if fomc_stale:
+        warnings.append("FOMC dates in config.py are out of date — add next year's dates.")
+    news = data.alpaca_news(hours=24) + data.alpaca_news(hours=24, symbols=C.NQ_HEAVY + ["QQQ", "SPY"])
+    tagged = risk.tag_headlines(news)
+    risk_level, risk_day = risk.day_risk(today, upcoming, tagged)
+    m_total, m_bias, m_parts = risk.macro_score(fred, etf, futs["NQ"]["d1"], futs["ES"]["d1"])
+    shared = {"risk_days": risk_days, "risk_day": risk_day, "macro_bias": m_bias}
+
+    sections = []
+    for name in C.INSTRUMENTS:
+        if futs[name]["m5"].empty:
+            warnings.append(f"No {name} data from yfinance this run.")
+            continue
+        try:
+            sections.append(run_instrument(name, futs[name], now, shared, fred, pw))
+        except Exception as e:  # one instrument failing shouldn't take the page down
+            print(f"[{name}] failed: {type(e).__name__}: {e}")
+            warnings.append(f"{name} failed this run ({type(e).__name__}) — check the Run algo log.")
+    C.use("NQ")
+
     page_ctx = {
-        "updated": now.strftime("%a %b %d %I:%M %p ET"), "locked_at": rec["locked_at"][11:16] + " ET",
-        "price": price, "sigma": sigma, "sigma_src": sigma_src,
+        "updated": now.strftime("%a %b %d %I:%M %p ET"), "warnings": warnings,
         "macro_total": m_total, "macro_bias": m_bias, "macro_parts": m_parts,
-        "risk_level": risk_level, "events": upcoming, "headlines": tagged,
-        "picks": picks, "scored": scored, "learned": learned, "options": opt_view,
-        "vwaps": vwap.all_vwaps(m5, today), "scorecard": logbook.scorecard(),
-        "level_string": pick.level_string(picks), "warnings": warnings,
+        "risk_level": risk_level, "events": upcoming, "headlines": tagged, "sections": sections,
     }
     os.makedirs(OUT, exist_ok=True)
     html = render.page(page_ctx)
@@ -141,8 +164,7 @@ def main():
     old = os.path.join(OUT, "levels.json")
     if os.path.exists(old):
         os.remove(old)
-    print(f"OK {today} picks={len(picks)} touches={learned['n']} options={'on' if opt else 'off'} "
-          f"options_history_days={len(opt_hist)} locked={'yes' if pw else 'NO'}")
+    print(f"OK page sections={[s['name'] for s in sections]} locked={'yes' if pw else 'NO'}")
 
 
 if __name__ == "__main__":

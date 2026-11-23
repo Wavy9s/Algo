@@ -5,8 +5,9 @@ import pandas as pd
 from . import config as C
 
 
-def build(bars: pd.DataFrame, bucket: float = C.BUCKET):
+def build(bars: pd.DataFrame, bucket: float = None):
     """Spread each candle's volume evenly over the buckets it traded through."""
+    bucket = bucket or C.BUCKET
     if bars is None or bars.empty:
         return None
     lo = np.floor(bars.low.min() / bucket) * bucket
@@ -96,8 +97,10 @@ def naked_pocs(day_profiles: dict, m5: pd.DataFrame, today, exclude_last=True) -
     return out
 
 
-def rth_structure(day_bars: pd.DataFrame, bucket: float = C.BUCKET, tol: float = 2.0):
+def rth_structure(day_bars: pd.DataFrame, bucket: float = None, tol: float = None):
     """AMT read of one RTH session: poor high/low and single-print zones (30m TPOs)."""
+    bucket = bucket or C.BUCKET
+    tol = tol if tol is not None else C.POOR_TOL
     rth = day_bars[day_bars.rth]
     if len(rth) < 6:
         return {}

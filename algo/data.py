@@ -104,16 +104,15 @@ def back_adjust(df, rolls, intraday=True):
     return df
 
 
-def futures():
-    """1m (7d), 5m (60d), 1d (2y) for NQ; daily ES for the ratio. Back-adjusted for rolls."""
-    m1 = tag(yf_bars("NQ=F", "7d", "1m"))
-    m5 = tag(yf_bars("NQ=F", "60d", "5m"))
-    d1 = yf_bars("NQ=F", "2y", "1d")
+def futures(ticker="NQ=F"):
+    """1m (7d), 5m (60d), 1d (2y) for one futures contract. Back-adjusted for rolls."""
+    m1 = tag(yf_bars(ticker, "7d", "1m"))
+    m5 = tag(yf_bars(ticker, "60d", "5m"))
+    d1 = yf_bars(ticker, "2y", "1d")
     rolls = find_roll(m5)
     return {
         "m1": back_adjust(m1, rolls), "m5": back_adjust(m5, rolls),
-        "d1": back_adjust(d1, rolls, intraday=False),
-        "es_d1": yf_bars("ES=F", "6mo", "1d"), "rolls": rolls,
+        "d1": back_adjust(d1, rolls, intraday=False), "rolls": rolls,
     }
 
 
