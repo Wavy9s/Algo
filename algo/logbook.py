@@ -2,6 +2,7 @@
 Files are encrypted with PAGE_PASSWORD (the repo is public)."""
 import os
 
+import numpy as np
 import pandas as pd
 
 from . import secure
@@ -122,3 +123,22 @@ def load_opt_cache(inst="NQ"):
 
 def save_opt_cache(obj, inst="NQ"):
     secure.save(os.path.join(ROOT, f"options{_sfx(inst)}.json"), obj)
+
+
+# ---------------------------------------------------------------- vol forecast log
+def vol_log(inst, today, vm, d1):
+    """Save today's forecast once, score old ones once 5 sessions have passed."""
+    from . import volmodel
+    path = os.path.join(ROOT, f"vol{_sfx(inst)}.json")
+    rows = secure.load(path) or []
+    if vm and not any(r["date"] == today.isoformat() for r in rows):
+        rows.append({"date": today.isoformat(), "asof": vm["asof"], "fc": vm["fc"], "iv": vm["iv"], "chosen": vm["chosen"]})
+    for r in rows:
+        if r.get("real") is None and r.get("asof"):
+            r["real"] = volmodel.realized(d1, pd.Timestamp(r["asof"]).date())
+    secure.save(path, rows)
+    done = [r for r in rows if r.get("real")][-20:]
+    if not done:
+        return None
+    err = lambda k: float(np.mean([abs(r[k] - r["real"]) for r in done]))
+    return {"n": len(done), "model_err": err("fc"), "iv_err": err("iv")}

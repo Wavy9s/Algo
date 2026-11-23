@@ -6,7 +6,7 @@ import sys
 import numpy as np
 
 from algo import config as C
-from algo import data, levels, logbook, options, pick, profile, render, risk, secure, stats, vwap
+from algo import data, levels, logbook, options, pick, profile, render, risk, secure, stats, volmodel, vwap
 from algo.data import NY
 
 OUT = os.path.join(os.path.dirname(__file__), "site")
@@ -48,11 +48,27 @@ def run_instrument(name, fut, now, shared, fred, pw):
     if pw:
         logbook.save_opt_cache(cache, name)
 
-    # volatility
+    # volatility: 5-day RV forecast (ridge vs HAR vs implied, best out-of-sample wins)
     ivs = fred.get(cfg["vol"])
     iv = float(ivs.iloc[-1]) if ivs is not None and len(ivs) else None
-    sigma, sigma_src = stats.sigma_points(price, d1[d1.index.date < today], iv)
-    sigma_src = sigma_src.replace("VXN", "VIX" if cfg["vol"] == "VIXCLS" else "VXN")
+    iv_name = "VIX" if cfg["vol"] == "VIXCLS" else "VXN"
+    d1_closed = d1[d1.index.date < today]
+    sigma_iv, iv_src = stats.sigma_points(price, d1_closed, iv)
+    vm = None
+    try:
+        vm = volmodel.forecast(d1_closed, ivs, fred.get("VIXCLS"))
+    except Exception as e:
+        print(f"[volmodel {name}] {type(e).__name__}: {e}")
+    if vm:
+        sigma = price * vm["fc"] / np.sqrt(252)
+        sigma_src = {"ridge": "vol model", "HAR": "HAR model", "implied": iv_name}[vm["chosen"]]
+    else:
+        sigma, sigma_src = sigma_iv, iv_src.replace("VXN", iv_name)
+    vol_view = None
+    if vm:
+        vol_view = {"chosen": vm["chosen"], "sigma_iv": sigma_iv, "iv_name": iv_name, "regime": vm["regime"],
+                    "ratio": vm["ratio"], "rmse": vm["rmse"], "alpha": vm["alpha"],
+                    "track": logbook.vol_log(name, today, vm, d1_closed)}
     if opt and opt.get("gamma_env") == "negative":
         sigma *= C.GAMMA_NEG_EM
         sigma_src += " ×neg-gamma"
@@ -67,12 +83,14 @@ def run_instrument(name, fut, now, shared, fred, pw):
             if d < today and len(g) > 300:
                 day_prof[d] = profile.build(g)
     bt = stats.backtest(m5, d1, day_prof, ivs if ivs is not None and len(ivs) else None,
-                        shared["risk_days"], opt_hist)
+                        shared["risk_days"], opt_hist,
+                        fc_hist=(vm or {}).get("oos"), reg_hist=(vm or {}).get("reg_hist"))
     learned = stats.learn(bt)
 
     lv = levels.collect(m5, d1, today, day_prof, opt_levels)
     ctx = {"risk_day": shared["risk_day"], "macro_bias": shared["macro_bias"],
-           "gamma_env": (opt or {}).get("gamma_env"), "dex_sign": 0}
+           "gamma_env": (opt or {}).get("gamma_env"), "dex_sign": 0,
+           "vol_regime": (vm or {}).get("regime")}
     scored = pick.score(lv, price, sigma, sigma_rem, learned, ctx)
 
     logbook.finalize(m5, today, name)
@@ -105,7 +123,7 @@ def run_instrument(name, fut, now, shared, fred, pw):
         "locked_at": rec["locked_at"][11:16] + " ET", "picks": picks, "scored": scored,
         "learned": learned, "options": opt_view, "vwaps": vwap.all_vwaps(m5, today),
         "scorecard": logbook.scorecard(inst=name), "level_string": pick.level_string(picks),
-        "warnings": warns,
+        "warnings": warns, "vol": vol_view,
     }
 
 
@@ -127,7 +145,7 @@ def main():
     today = data.trade_date(next(f["m5"] for f in futs.values() if not f["m5"].empty).index[-1])
 
     # shared: macro, events, headlines
-    fred = {s: data.fred_series(s) for s in ("DGS2", "DGS10", "VIXCLS", "VXVCLS", "VXNCLS")}
+    fred = {s: data.fred_series(s, days=800) for s in ("DGS2", "DGS10", "VIXCLS", "VXVCLS", "VXNCLS")}
     etf = data.alpaca_daily(C.ETFS)
     upcoming, risk_days, fomc_stale = risk.events(today)
     if fomc_stale:

@@ -93,7 +93,15 @@ def simulate(level, side, bars: pd.DataFrame, sigma, max_touches=C.MAX_TOUCHES):
     return recs
 
 
-def backtest(m5, d1, day_prof, vxn_hist=None, risk_days=frozenset(), opt_hist=None):
+def _asof(d: dict, D):
+    """Value for the last key before date D."""
+    if not d:
+        return None
+    ks = [k for k in d if k < D]
+    return d[max(ks)] if ks else None
+
+
+def backtest(m5, d1, day_prof, vxn_hist=None, risk_days=frozenset(), opt_hist=None, fc_hist=None, reg_hist=None):
     """Rebuild levels each past day using only prior data, then score every touch."""
     rows = []
     days = sorted(m5.tdate.unique())
@@ -107,7 +115,12 @@ def backtest(m5, d1, day_prof, vxn_hist=None, risk_days=frozenset(), opt_hist=No
             prior = vxn_hist[vxn_hist.index < D]
             vx = float(prior.iloc[-1]) if len(prior) else None
         dd = d1[d1.index.date < D] if d1 is not None else None
-        sigma, _ = sigma_points(prev_close, dd, vx)
+        fc = _asof(fc_hist, D)
+        if fc:
+            sigma = prev_close * fc / math.sqrt(252)   # vol model's out-of-sample forecast
+        else:
+            sigma, _ = sigma_points(prev_close, dd, vx)
+        reg = _asof(reg_hist, D) or "normal"
         lv = L.collect(m5, d1, D, day_prof, (opt_hist or {}).get(D))
         if not lv:
             continue
@@ -126,7 +139,7 @@ def backtest(m5, d1, day_prof, vxn_hist=None, risk_days=frozenset(), opt_hist=No
                 if r["outcome"] == "open":
                     continue
                 rows.append({"date": D, "type": x["type"], "cat": x["cat"], "side": side,
-                             "stack": stk, "risk": D in risk_days, "sigma": sigma, **r})
+                             "stack": stk, "risk": D in risk_days, "sigma": sigma, "regime": reg, **r})
     return pd.DataFrame(rows)
 
 
@@ -138,7 +151,8 @@ def _rate(s):
 def learn(bt: pd.DataFrame):
     """Hold % per type with shrinkage: type -> category -> overall."""
     if bt is None or bt.empty:
-        return {"overall": 0.5, "types": {}, "cats": {}, "stack_bonus": 0.0, "risk_penalty": 0.0, "n": 0}
+        return {"overall": 0.5, "types": {}, "cats": {}, "stack_bonus": 0.0, "risk_penalty": 0.0, "n": 0,
+                "regime_adj": {}, "regime_n": {}}
     bt = bt.copy()
     bt["held"] = (bt.outcome == "held").astype(float)
     K = C.SHRINK_K
@@ -169,6 +183,11 @@ def learn(bt: pd.DataFrame):
     rp = 0.0
     if bt.risk.sum() >= 20:
         rp = float(np.clip(bt[~bt.risk].held.mean() - bt[bt.risk].held.mean(), 0, 0.15))
+    reg_adj, reg_n = {}, {}
+    if "regime" in bt:
+        for g, x in bt.groupby("regime"):
+            reg_n[g] = int(len(x))
+            reg_adj[g] = float(np.clip(x.held.mean() - overall, -0.08, 0.08)) if len(x) >= 30 else 0.0
     return {"overall": float(overall), "types": types, "cats": cats, "stack_bonus": bonus,
-            "risk_penalty": rp, "n": int(len(bt)),
+            "risk_penalty": rp, "n": int(len(bt)), "regime_adj": reg_adj, "regime_n": reg_n,
             "bounce_all": float(bt[bt.outcome == "held"].bounce.mean() or 0)}

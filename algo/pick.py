@@ -55,6 +55,13 @@ def score(lv, price, sigma, sigma_rem, learned, ctx):
         if (dex > 0 and lead["side"] == "S") or (dex < 0 and lead["side"] == "R"):
             notes.append("against dealers")
             hold -= 0.02
+        vr = ctx.get("vol_regime")
+        adj = learned.get("regime_adj", {}).get(vr, 0.0) if vr else 0.0
+        if adj:
+            hold += adj
+            notes.append(f"vol {vr}")
+        if abs(lead["dist"]) > sigma:
+            notes.append("outside 1σ day")
         hold = float(np.clip(hold, 0.05, 0.95))
         stop = C.BREAK_STOP * sigma
         ev = lead["touch"] * (hold * lead["bounce"] - (1 - hold) * stop)

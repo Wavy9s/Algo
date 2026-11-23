@@ -60,8 +60,15 @@ def _top(c, s, a):
       f"<p class='sub'>picks locked {e(s['locked_at'])}</p></div>")
     a(f"<div class='k'><p class='lab'>Macro</p><p class='big' style='color:{mc}'>{e(c['macro_bias'])} {c['macro_total']:+d}</p></div>")
     a(f"<div class='k'><p class='lab'>Risk today</p><p class='big' style='color:{rc}'>{e(c['risk_level'])}</p></div>")
-    a(f"<div class='k'><p class='lab'>Expected move (1σ day)</p><p class='big m'>±{num(s['sigma'], 1 if s['sigma'] < 100 else 0)}</p>"
-      f"<p class='sub'>week ±{num(s['sigma'] * 5 ** .5, 1 if s['sigma'] < 100 else 0)} · {e(s['sigma_src'])}</p></div>")
+    dp = 1 if s["sigma"] < 100 else 0
+    v = s.get("vol")
+    extra = ""
+    if v:
+        rc2 = {"expansion": RED, "chop": GREEN}.get(v["regime"], GREY)
+        extra = (f"<p class='sub'>{e(v['iv_name'])} says ±{num(v['sigma_iv'], dp)} · "
+                 f"<b style='color:{rc2}'>vol {e(v['regime'])}</b></p>")
+    a(f"<div class='k'><p class='lab'>Expected move (1σ day)</p><p class='big m'>±{num(s['sigma'], dp)}</p>"
+      f"<p class='sub'>week ±{num(s['sigma'] * 5 ** .5, dp)} · {e(s['sigma_src'])}</p>{extra}</div>")
     a("</div>")
 
     a(f"<div class='card'><p class='lab'>{s['name']} picked levels — locked at first run of the day</p><table>"
@@ -103,7 +110,31 @@ def _top(c, s, a):
     a("</div></div>")
 
 
+def _vol(s, a):
+    v = s.get("vol")
+    if not v:
+        return
+    r = v["rmse"]
+    names = {"ridge": "Vol model (ridge)", "HAR": "HAR", "implied": v["iv_name"]}
+    a(f"<div class='card'><details><summary>{s['name']} vol forecast — next 5 days</summary>"
+      f"<p class='sub'>Using: <b>{e(names[v['chosen']])}</b>. The model is only used if it beats {e(v['iv_name'])} and HAR "
+      f"out of sample. Forecast / {e(v['iv_name'])} = {v['ratio']:.2f} → vol {e(v['regime'])} "
+      "(&lt;0.85 chop, &gt;1.10 expansion).</p><table><tr><th>Forecaster</th><th>Walk-forward error (RMSE, annualized vol)</th></tr>")
+    for k in ("ridge", "HAR", "implied"):
+        mark = " ✓" if k == v["chosen"] else ""
+        a(f"<tr><td>{e(names[k])}{mark}</td><td>{r[k]:.3f}</td></tr>")
+    a("</table>")
+    t = v.get("track")
+    if t:
+        a(f"<p class='sub'>Live track record (last {t['n']} forecasts): forecast off by {t['model_err']:.3f} on average "
+          f"vs {e(v['iv_name'])} off by {t['iv_err']:.3f}.</p>")
+    else:
+        a("<p class='sub'>Live track record starts after the first 5 sessions.</p>")
+    a("</details></div>")
+
+
 def _bottom(s, a):
+    _vol(s, a)
     sc = s.get("scorecard")
     a(f"<div class='card'><p class='lab'>{s['name']} scorecard — how past picks did</p>")
     if sc:
@@ -132,7 +163,9 @@ def _bottom(s, a):
     L = s["learned"]
     a(f"<div class='card'><details><summary>{s['name']} level stats (backtest, {L['n']} touches, last ~60 days)</summary>"
       f"<p class='sub'>Overall hold {pct(L['overall'])} · stack bonus +{L['stack_bonus']:.0%} per extra level · "
-      f"risk-day penalty −{L['risk_penalty']:.0%}. Small n = shrunk toward the category average.</p><table>"
+      f"risk-day penalty −{L['risk_penalty']:.0%}. "
+      + "".join(f"Vol {k}: {L['regime_adj'].get(k, 0):+.0%} (n={L['regime_n'].get(k, 0)}). " for k in ("chop", "normal", "expansion"))
+      + "Small n = shrunk toward the category average.</p><table>"
       "<tr><th>Type</th><th>n</th><th>Hold</th><th>Sweep</th><th>Bounce</th><th>Break run</th><th>1st touch</th><th>Retest</th>"
       "<th>NY AM</th><th>Risk day</th></tr>")
     for t, st in sorted(L["types"].items(), key=lambda kv: -kv[1]["n"]):
