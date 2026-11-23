@@ -19,10 +19,33 @@ def _key():
     return (os.getenv("DATAFIRST_API_KEY") or "").strip() or None
 
 
+HEADERS = {
+    "Accept": "application/json",
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                  "Chrome/131.0 Safari/537.36 swing-levels/1.0",
+}
+
+
+def _why(r):
+    """DataFirst's own error reason (RFC 9457 title/detail) — text only, no market data."""
+    try:
+        js = r.json()
+        parts = [str(js.get(k)) for k in ("title", "detail", "code", "error", "message") if js.get(k)]
+        if parts:
+            return " | ".join(parts)[:200]
+    except Exception:
+        pass
+    server = r.headers.get("server", "")
+    if "cloudflare" in server.lower() or "cf-ray" in {k.lower() for k in r.headers}:
+        return "blocked by Cloudflare (bot filter), not by DataFirst's API"
+    return (r.text or "")[:120].replace("\n", " ")
+
+
 def _get(path, key, params=None):
-    r = requests.get(BASE + path, headers={"Authorization": f"Bearer {key}"}, params=params or {}, timeout=30)
+    r = requests.get(BASE + path, headers={**HEADERS, "Authorization": f"Bearer {key}"},
+                     params=params or {}, timeout=30)
     if r.status_code >= 400:
-        raise RuntimeError(f"{path} HTTP {r.status_code}")
+        raise RuntimeError(f"{path} HTTP {r.status_code} — {_why(r)}")
     js = r.json()
     if isinstance(js, dict) and isinstance(js.get("data"), (dict, list)):
         js = js["data"]
