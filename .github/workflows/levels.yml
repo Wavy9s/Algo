@@ -37,7 +37,7 @@ jobs:
           ALPACA_SECRET: ${{ secrets.ALPACA_SECRET }}
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           DATAFIRST_API_KEY: ${{ secrets.DATAFIRST_API_KEY }}
-          DATAFIRST_BASE_URL: ${{ vars.DATAFIRST_BASE_URL }}
+          PAGE_PASSWORD: ${{ secrets.PAGE_PASSWORD }}
         run: python run.py
 
       - name: Save picks log
