@@ -1,0 +1,105 @@
+{
+ "date": "2026-11-23",
+ "locked_at": "2026-11-22T22:51:57.255443-05:00",
+ "sigma": 571.2371995267214,
+ "price": 25892.75,
+ "picks": [
+  {
+   "price": 26212.5,
+   "side": "R",
+   "dist": 319.75,
+   "label": "Prior-day HVN + Prior-day VWAP 1\u03c3 (+)",
+   "types": [
+    "PD_HVN",
+    "PD_VWAP_1"
+   ],
+   "stack": 2,
+   "touch": 0.576,
+   "hold": 0.348,
+   "n": 37,
+   "bounce": 226.0,
+   "ev": 19.5,
+   "grade": "B",
+   "notes": [],
+   "zone": null,
+   "lvn": false,
+   "sweep": 0.6666666666666666,
+   "run": 200.78
+  },
+  {
+   "price": 26146.0,
+   "side": "R",
+   "dist": 253.25,
+   "label": "Prior-week VWAP 1\u03c3 (\u2212)",
+   "types": [
+    "PW_VWAP_1"
+   ],
+   "stack": 1,
+   "touch": 0.658,
+   "hold": 0.377,
+   "n": 26,
+   "bounce": 244.7,
+   "ev": 32.7,
+   "grade": "B",
+   "notes": [],
+   "zone": null,
+   "lvn": false,
+   "sweep": 0.45454545454545453,
+   "run": 153.02736861092563
+  },
+  {
+   "price": 25797.5,
+   "side": "S",
+   "dist": -95.25,
+   "label": "Single prints 25,790-25,805 + Prior-day VWAP",
+   "types": [
+    "PD_VWAP",
+    "SINGLE"
+   ],
+   "stack": 2,
+   "touch": 0.868,
+   "hold": 0.418,
+   "n": 13,
+   "bounce": 249.5,
+   "ev": 55.9,
+   "grade": "B",
+   "notes": [
+    "against macro"
+   ],
+   "zone": [
+    25790.0,
+    25805.0
+   ],
+   "lvn": false,
+   "sweep": 0.6666666666666666,
+   "run": 140.67857142857142
+  },
+  {
+   "price": 25465.0,
+   "side": "S",
+   "dist": -427.75,
+   "label": "Single prints 25,440-25,490 + Prior-day LVN",
+   "types": [
+    "PD_LVN",
+    "SINGLE"
+   ],
+   "stack": 2,
+   "touch": 0.454,
+   "hold": 0.418,
+   "n": 13,
+   "bounce": 249.5,
+   "ev": 29.2,
+   "grade": "B",
+   "notes": [
+    "against macro"
+   ],
+   "zone": [
+    25440.0,
+    25490.0
+   ],
+   "lvn": false,
+   "sweep": 0.6666666666666666,
+   "run": 140.67857142857142
+  }
+ ]
+}
